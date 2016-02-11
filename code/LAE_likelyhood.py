@@ -1,5 +1,6 @@
 #bin/#!/usrt/env python
 import numpy as np 
+import os
 #import matplotlib.pyplot as P
 #import correlation_lib as corr
 import sys
@@ -7,6 +8,9 @@ import itertools
 import emcee
 import time
 from pylab import *
+try:
+    os.mkdir('../output/')
+except: print '../output already exist. Not a problem'
 tini=time.time()
 
 
@@ -15,10 +19,11 @@ load_snap_file=1 #load the snapshot positions and massess. Default 0.
 indexes_subcat=1 #find the indexes for the subcatalogs. Default 1
 plot_ndist=0  # plot the number halo distrubition in the subacatalog. Default 0
 
-niter=100 #number of times to iter emcee
-ndim=3 #number of parameters, 3 in this time: mmin,mma,focc.
-nwalkers=16 # number of independent walks
-ncores=16 #to optimize it should be set to nwalkers
+
+niter=300 #number of times to iter emcee
+ndim=2 #number of parameters, 3 in this time: mmin,mma,focc.
+nwalkers=32 # number of independent walks
+ncores=32 #to optimize it should be set to nwalkers
 
 #The center and widths of the seeds for EMCEE 
 Mo=11.0 # 
@@ -31,14 +36,16 @@ dfo=0.5
 
 mmin=Mo+dmmin*randn(nwalkers) 
 mmin=np.abs(mmin)
-mmax=Mo+0.2+dmmax*randn(nwalkers)
-mmax=np.abs(mmax)
+dM=1.0+0.8*randn(nwalkers)
+dM=np.abs(dM)
 Focc=fo+dfo*randn(nwalkers)
 Focc=np.abs(Focc)    
 
 #initial seeds for the emcee walkers
-pos = [[mmin[i],mmax[i],Focc[i]] for i in range(nwalkers)]
-
+if ndim==3:
+    pos = [[mmin[i],dM[i],Focc[i]] for i in range(nwalkers)]
+if ndim==2:
+    pos = [[mmin[i],dM[i]] for i in range(nwalkers)]
 simwidth=250.0 # physical width of the simulation in Mpc/h
 z=3.1
 Nlae_mean=199 # The (mean) number of LAEs in the observational  catalog(s)
@@ -78,6 +85,7 @@ def DD_histogram(X,Y,distance,th_min,th_max,theta_bins,logtheta=False):
     '''
 
     n_points=len(X)
+    #print "npoints=", n_points
     d_arr=[]
     #print "number of LAEs=" + str(n_points)
     for i in range(n_points):
@@ -86,9 +94,11 @@ def DD_histogram(X,Y,distance,th_min,th_max,theta_bins,logtheta=False):
             d=(X[i] - X[j])*(X[i] - X[j]) + (Y[i] - Y[j])*(Y[i] - Y[j])
             d=np.sqrt(d)/distance
             d_arr=np.append(d_arr,d)
-            
     
-    theta=206265.0*d_arr
+    try:
+        theta=206265.0*d_arr
+    except:
+        theta=1000*th_max*np.ones(3)
     #print d_arr, theta, "darr-theta"
     if logtheta: theta=np.log10(theta)
     
@@ -127,7 +137,15 @@ def RR_histogram(Xr,Yr,distance,th_min,th_max,theta_bins,cat_number=3,logtheta=F
                 d=np.sqrt(d)/distance
                 d_arr=np.append(d_arr,d)
                 
-    theta=206265*d_arr 
+    
+    
+    try:
+        theta=206265.0*d_arr
+    except:
+        theta=1000*th_max*np.ones(3)
+    
+
+    
     if logtheta: theta=np.log10(theta)
     RR,bins=np.histogram(theta,bins=theta_bins, range=(th_min,th_max))
     
@@ -163,7 +181,17 @@ def DR_histogram(X,Y,Xr,Yr,distance,th_min,th_max,theta_bins,cat_number=3,logthe
                 d=( X[i] - Xr[j + n_points*m] )*( X[i] - Xr[j + n_points*m] ) + ( Y[i] - Yr[j + n_points*m] )*( Y[i] - Yr[j + n_points*m] )
                 d=np.sqrt(d)/distance
                 d_arr=np.append(d_arr,d)
-    theta=206265*d_arr 
+
+        
+    
+    try:
+        theta=206265.0*d_arr
+    except:
+        theta=1000*th_max*np.ones(3)
+
+                
+
+
     if logtheta: theta=np.log10(theta)
     
     DR,bins=np.histogram(theta,bins=theta_bins, range=(th_min,th_max))
@@ -266,10 +294,10 @@ if plot_ndist:
 
     figure()
     n, bins, patches = plt.hist(np.log10(n_array), np.sqrt(len(n_array))/2.0, normed=True,histtype='step', cumulative=False,label='all')
-    file=open("mminmax_density.txt","w")
+    file=open("../output/mminmax_density.txt","w")
     file.write("")
     file.close()
-    file=open("../output/mminmax_density.txt","a")
+    file=open("mminmax_density.txt","a")
 
     for Mmin,Mmax in itertools.product(mmin,mmax):
         if Mmin>=Mmax-0.00001: continue
@@ -284,7 +312,7 @@ if plot_ndist:
             xm=x[wm]; ym=y[wm]; zm=z[wm]; mm=m[wm]
             Nmass.append(len(xm))
             del(xm);del(ym);del(zm);del(mm)
-            print i,j,k
+            #print i,j,k
             n, bins, patches = plt.hist(np.log10(Nmass), np.sqrt(len(Nmass))/2.0, normed=True,histtype='step', cumulative=False,label="Mmin="+str(Mmin)+" Mmax="+str(Mmax))
             Nmass=np.append(np.array([mmin,mmax]), Nmass)
             np.savetxt(file,Nmass)
@@ -295,11 +323,12 @@ if plot_ndist:
 
 
 
-def corelationlike(Mmin,Mmax,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth,Dc=Dc,Da=Da,Dl=Dl,cat_number=1,logtheta=1,convert_to_arcsec=1,estimator='landy',acf_file='../data/obs/ACF/Bielby2015.txt',Nlae=Nlae_mean):
+def corelationlike(Mmin,dM,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth,Dc=Dc,Da=Da,Dl=Dl,cat_number=1,logtheta=1,convert_to_arcsec=1,estimator='landy',acf_file='../data/obs/ACF/Bielby2015.txt',Nlae=Nlae_mean):
     """ This function computes the likelyhood of a model with Mmin, Mmax, focc to macth the observational ACF and mean number density of galaxies.
     It is fundamental for the EMCEE code.""" 
+    Mmax=Mmin+dM
     print "Mmin=",Mmin," Mmax=",Mmax," focc=",focc
-    theta,corrobs,dcorr=np.genfromtxt(acf_file,unpack=1)
+    theta,corrobs,dcorrobs=np.genfromtxt(acf_file,unpack=1)
     if convert_to_arcsec: theta=theta*60.0
     if logtheta: theta=np.log10(theta)
     
@@ -308,27 +337,34 @@ def corelationlike(Mmin,Mmax,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth,
     th_min=theta_bins[0];th_max=theta_bins[-1]
     corr=np.zeros( len(theta)  )
     m=np.log10(mass)
-    if Mmin>=Mmax-0.00001 or focc>=1 or focc<0 or Mmin<9.5 or Mmax<9.6 or  Mmax>13.0 or Mmin>12.5: chi2=np.inf;print "chi2=inf"
+    if Mmin>=Mmax-0.00001 or focc>1 or focc<0 or Mmin<9.19 or Mmax<9.24 or  Mmax>13.4 or Mmin>12.5: return -1.0*np.inf
     else:
-        print th_max, th_min, "thmax-min"
+        #print th_max, th_min, "thmax-min"
         count=1
         #for i,j,k in itertools.product(range(nx),range(ny),range(nz)):
         
         x1=x[index[count]];y1=y[index[count]];m1=m[index[count]]
         wmin=m1>Mmin; wmax=m1<Mmax
         wm=wmin*wmax
-        print x1, y1, wm
+        #print x1, y1, wm
         #raw_input("Press Enter to continue...")
         xm=x1[wm]; ym=y1[wm]; n_points1=len(xm); n_points=len(xm)
         Nhalo=n_points*mean(n_array)/n_array[0] # a crude stimation of the mean number of halos with Mmin<m<Mmax in a box
         focch=Nlae/Nhalo
         Nlae_teo=focc*Nhalo
         dNlae=np.sqrt(Nlae)
+        if focc==1:
+            Nlae_teo=Nlae
+            if (Nhalo<Nlae/3):
+                chi2=np.inf
+                return -1*chi2
         if  (1.0*Nlae/Nlae_teo)>6.3 or (1.0*Nlae_teo/Nlae)>6.3:
             chi2=np.inf
+            return -1*chi2
         else:
             count=0
             corr=np.zeros( len(theta)  )
+            corr_arr=np.zeros( (len(theta),nx*ny*nz)  )
             narray=[]
             for i,j,k in itertools.product(range(nx),range(ny),range(nz)):
                 x1=x[index[count]];y1=y[index[count]];m1=m[index[count]]
@@ -347,20 +383,38 @@ def corelationlike(Mmin,Mmax,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth,
                 RR,bins=RR_histogram(xr,yr,Dc,th_min,th_max,theta_bins,cat_number=cat_number,logtheta=logtheta)
                 DR,bins=DR_histogram(xm,ym,xr,yr,Dc,th_min,th_max,theta_bins,cat_number=cat_number,logtheta=logtheta)
                 #print "DD=",DD," RR=",RR," DR=",DR
-                if estimator=='landy':corr=corr+landy_correlation(DD,RR,DR)
-                elif estimator=='peebles':corr=corr+peebles_correlation(DD,DR)
-                elif estimator=='standard':  corr=corr+standard_correlation(DD,RR)
-                else:corr=corr+landy_correlation(DD,RR,DR)
+                if estimator=='landy':corr1=landy_correlation(DD,RR,DR);corr=corr+corr1;corr_arr[:,count]=corr1
+                elif estimator=='peebles':corr1=peebles_correlation(DD,RR,DR);corr=corr+corr1;corr_arr[:,count]=corr1
+                elif estimator=='standard':corr1=standard_correlation(DD,RR,DR);corr=corr+corr1;corr_arr[:,count]=corr1
+                else:corr1=landy_correlation(DD,RR,DR);corr=corr+corr1;corr_arr[:,count]=corr1
+                    
                 count=count+1
             corr=np.ma.masked_invalid(corr/count)
+            std=np.array([np.std(corr_arr[i,:]) for i in range(len(theta))])
+            low=np.array([np.percentile(corr_arr[i,:],16) for i in range(len(theta))])
+            up=np.array([np.percentile(corr_arr[i,:],84) for i in range(len(theta))])
+            median=np.array([np.percentile(corr_arr[i,:],50) for i in range(len(theta))])
+            err_l=median-low
+            err_u=up-median
+            #print "std,err_l,err_u",std,err_l,err_u
             Nhalo=np.mean(n_array)
             focch=Nlae/Nhalo
             Nlae_teo=focc*Nhalo
             dNlae=np.sqrt(Nlae)
-        chi2=((Nlae_teo-Nlae)*(Nlae_teo-Nlae)/(dNlae*dNlae))+np.sum( (corr-corrobs)*(corr-corrobs)/(dcorr*dcorr) )/(np.ma.count(corr)-1) 
-    print "chi2",chi2
-    print "corr=",corr,(np.ma.count(corr))
-    print "corrobs=",corrobs
+            dcorr=dcorrobs+0.000001
+            for i in range(len(theta)):
+                if (corr-corrobs)[i]<0:
+                    dcorr[i]=dcorrobs[i]+err_u[i]
+                else:
+                    dcorr[i]=dcorrobs[i]+err_l[i]
+        if focc==1:
+            chi2=np.sum( (corr-corrobs)*(corr-corrobs)/(dcorr*dcorr) )/(np.ma.count(corr)-1)
+        else:
+            dcorr=dcorrobs
+            chi2=((Nlae_teo-Nlae)*(Nlae_teo-Nlae)/(dNlae*dNlae))+np.sum( (corr-corrobs)*(corr-corrobs)/(dcorr*dcorr) )/(np.ma.count(corr)-1) 
+        #print "chi2",chi2
+    #print "corr=",corr,(np.ma.count(corr))
+    #print "corrobs=",corrobs
     #raw_input("Press Enter to continue...")
     return -1*chi2
 
@@ -369,26 +423,53 @@ def corelationlike(Mmin,Mmax,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth,
 
 def lnlike(params,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth):
     """This is the way the likelihood function should be redefined to be  passed to emcee"""
-    Mmin,Mmax,focc=params
-    return corelationlike(Mmin,Mmax,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth)
+    
+    Mmin,dM,focc=params
+    return corelationlike(Mmin,dM,focc,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth)
+
+
+def lnlike1(params,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth):
+    Mmin,dM=params
+    return corelationlike(Mmin,dM,1,x,y,z,mass,index,n_array,xwidth,ywidth,zwidth)
 
 
 #Setting emcee 6
-sampler = emcee.EnsembleSampler(nwalkers, ndim, lnlike, args=(x,y,z,mass,index,n_array,xwidth,ywidth,zwidth),threads=ncores)
-
-# Runing emcee for a few times 
-pos0, prob, state = sampler.run_mcmc(pos, 4)
+if ndim==3:
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnlike, args=(x,y,z,mass,index,n_array,xwidth,ywidth,zwidth),threads=ncores)
+    
+if ndim==2:
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnlike1, args=(x,y,z,mass,index,n_array,xwidth,ywidth,zwidth),threads=ncores)
+    # Runing emcee for a few times 
+pos0, prob, state = sampler.run_mcmc(pos, 1)
 
 sampler.reset()
 
-fn = "../output/LAEBayes_mcmc_new.out"
+fn = "../output/LAEBayes_mcmc_dM_final.out"
+
+
 f = open(fn, "w")
 f.close()
+
+
+fn1 = "../output/LAEBayes_mcmc_dM_chi_final.out"
+
+f1 = open(fn, "w")
+f1.close()
+
 
 # Restarting  emcee over a large loop of niter times
 for pos, prob, rstate in sampler.sample(pos0, prob, state, iterations=niter):
     # Write the current position to a file, one line per walker                                                                                                                     
     f = open(fn, "a")
+    f1 = open(fn1, "a")
     f.write("\n".join(["\t".join([str(q) for q in p]) for p in pos]))
+    #f1.write("\n".join(["\t".join([str(q) for q in p]) for p in pos]))
+    f1.write("\n".join([str(q) for q in prob]))
+    print "rstate=  ", rstate
+    #f1.write("\t".join([str(q) for q in prob]))
     f.write("\n")
+    f1.write("\n")
     f.close()
+    f1.close()
+
+
