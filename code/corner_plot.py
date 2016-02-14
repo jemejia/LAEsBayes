@@ -18,5 +18,5 @@ rc('font', **font)
 parspace=genfromtxt('../output/LAEBayes_mcmc_dM_final.out')
 parspace[:,1]+=parspace[:,0]
 
-fig = corner.corner(parspace,bins=10, labels=["$M_{min}$", "$M_{max}$"],quantiles=[0.16, 0.5, 0.84])
+fig = corner.corner(parspace[200:],bins=10, labels=["$M_{min}$", "$M_{max}$"],quantiles=[0.16, 0.5, 0.84])
 fig.savefig('../output/likelyplot.png', format='png', dpi=600,bbox_inches='tight')
